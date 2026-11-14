@@ -1,0 +1,225 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn()
+        && request.auth.token.email == 'allidavid473@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin()
+        || (isSignedIn() && request.auth.token.email_verified == true && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    function isValidEnquiry(data) {
+      return data.keys().hasAll([
+          'id', 'fullName', 'phone', 'serviceType', 'location',
+          'preferredContact', 'projectDescription', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'fullName', 'phone', 'email', 'serviceType', 'location',
+          'preferredContact', 'preferredDate', 'projectDescription', 'technicalSummary',
+          'status', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+        && data.phone is string && data.phone.size() >= 6 && data.phone.size() <= 32
+        && (!('email' in data) || (data.email is string && data.email.size() <= 160))
+        && data.serviceType in ['solar', 'cctv', 'it', 'multiple', 'general']
+        && data.location is string && data.location.size() >= 2 && data.location.size() <= 160
+        && data.preferredContact in ['whatsapp', 'phone', 'email']
+        && (!('preferredDate' in data) || (data.preferredDate is string && data.preferredDate.size() <= 40))
+        && data.projectDescription is string && data.projectDescription.size() >= 5 && data.projectDescription.size() <= 2000
+        && (!('technicalSummary' in data) || (data.technicalSummary is string && data.technicalSummary.size() <= 1000))
+        && data.status in ['new', 'contacted', 'quoted', 'completed', 'archived']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidProject(data) {
+      return data.keys().hasAll([
+          'id', 'title', 'category', 'location', 'description',
+          'equipmentUsed', 'published', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'title', 'category', 'location', 'description',
+          'equipmentUsed', 'results', 'imageUrl', 'published', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.title is string && data.title.size() >= 3 && data.title.size() <= 140
+        && data.category in ['solar', 'cctv', 'it']
+        && data.location is string && data.location.size() >= 2 && data.location.size() <= 120
+        && data.description is string && data.description.size() >= 10 && data.description.size() <= 1500
+        && data.equipmentUsed is string && data.equipmentUsed.size() >= 3 && data.equipmentUsed.size() <= 300
+        && (!('results' in data) || (data.results is string && data.results.size() <= 500))
+        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 500))
+        && data.published is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInsight(data) {
+      return data.keys().hasAll([
+          'id', 'title', 'category', 'summary', 'body',
+          'readTime', 'published', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'title', 'category', 'summary', 'body',
+          'readTime', 'published', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.title is string && data.title.size() >= 4 && data.title.size() <= 160
+        && data.category in ['solar', 'cctv', 'it', 'general']
+        && data.summary is string && data.summary.size() >= 10 && data.summary.size() <= 400
+        && data.body is string && data.body.size() >= 20 && data.body.size() <= 8000
+        && data.readTime is string && data.readTime.size() >= 2 && data.readTime.size() <= 30
+        && data.published is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTestimonial(data) {
+      return data.keys().hasAll([
+          'id', 'clientName', 'organization', 'serviceReceived',
+          'quote', 'approved', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'clientName', 'organization', 'serviceReceived',
+          'quote', 'approved', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.clientName is string && data.clientName.size() >= 2 && data.clientName.size() <= 120
+        && data.organization is string && data.organization.size() >= 2 && data.organization.size() <= 120
+        && data.serviceReceived in ['solar', 'cctv', 'it', 'multiple']
+        && data.quote is string && data.quote.size() >= 10 && data.quote.size() <= 1000
+        && data.approved is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'addedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'addedAt'])
+        && isValidId(data.uid)
+        && data.email is string && data.email.size() >= 5 && data.email.size() <= 160
+        && data.addedAt is timestamp;
+    }
+
+    match /enquiries/{enquiryId} {
+      allow get: if isAdmin() && isValidId(enquiryId);
+      allow list: if isAdmin();
+      allow create: if isValidId(enquiryId)
+        && isValidEnquiry(incoming())
+        && incoming().id == enquiryId
+        && incoming().status == 'new'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin()
+        && isValidId(enquiryId)
+        && isValidEnquiry(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'technicalSummary', 'updatedAt']);
+      allow delete: if isAdmin() && isValidId(enquiryId);
+    }
+
+    match /projects/{projectId} {
+      allow get: if isValidId(projectId) && (existing().published == true || isAdmin());
+      allow list: if existing().published == true || isAdmin();
+      allow create: if isAdmin()
+        && isValidId(projectId)
+        && isValidProject(incoming())
+        && incoming().id == projectId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin()
+        && isValidId(projectId)
+        && isValidProject(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'category', 'location', 'description', 'equipmentUsed',
+          'results', 'imageUrl', 'published', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(projectId);
+    }
+
+    match /insights/{insightId} {
+      allow get: if isValidId(insightId) && (existing().published == true || isAdmin());
+      allow list: if existing().published == true || isAdmin();
+      allow create: if isAdmin()
+        && isValidId(insightId)
+        && isValidInsight(incoming())
+        && incoming().id == insightId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin()
+        && isValidId(insightId)
+        && isValidInsight(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'category', 'summary', 'body', 'readTime', 'published', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(insightId);
+    }
+
+    match /testimonials/{testimonialId} {
+      allow get: if isValidId(testimonialId) && (existing().approved == true || isAdmin());
+      allow list: if existing().approved == true || isAdmin();
+      allow create: if isAdmin()
+        && isValidId(testimonialId)
+        && isValidTestimonial(incoming())
+        && incoming().id == testimonialId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin()
+        && isValidId(testimonialId)
+        && isValidTestimonial(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'clientName', 'organization', 'serviceReceived', 'quote', 'approved', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(testimonialId);
+    }
+
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && ((isSignedIn() && request.auth.uid == uid) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isBootstrappedAdmin()
+        && isValidId(uid)
+        && isValidAdminUser(incoming())
+        && incoming().uid == uid
+        && incoming().addedAt == request.time;
+      allow update: if false;
+      allow delete: if isBootstrappedAdmin() && isValidId(uid);
+    }
+  }
+}

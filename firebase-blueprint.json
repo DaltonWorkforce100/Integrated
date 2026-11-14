@@ -1,0 +1,298 @@
+{
+  "entities": {
+    "Enquiry": {
+      "title": "Enquiry",
+      "description": "Structured customer quote or consultation enquiry submitted through Teracore forms.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "fullName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 32
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "serviceType": {
+          "type": "string",
+          "enum": ["solar", "cctv", "it", "multiple", "general"]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 160
+        },
+        "preferredContact": {
+          "type": "string",
+          "enum": ["whatsapp", "phone", "email"]
+        },
+        "preferredDate": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "projectDescription": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 2000
+        },
+        "technicalSummary": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "status": {
+          "type": "string",
+          "enum": ["new", "contacted", "quoted", "completed", "archived"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "fullName",
+        "phone",
+        "serviceType",
+        "location",
+        "preferredContact",
+        "projectDescription",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Completed deployment or engineering case study showcased in the Teracore portfolio.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 140
+        },
+        "category": {
+          "type": "string",
+          "enum": ["solar", "cctv", "it"]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 1500
+        },
+        "equipmentUsed": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 300
+        },
+        "results": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "imageUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "published": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "category",
+        "location",
+        "description",
+        "equipmentUsed",
+        "published",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Insight": {
+      "title": "Insight",
+      "description": "Educational guide or industry insight published by Teracore.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 160
+        },
+        "category": {
+          "type": "string",
+          "enum": ["solar", "cctv", "it", "general"]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 400
+        },
+        "body": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 8000
+        },
+        "readTime": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "published": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "category",
+        "summary",
+        "body",
+        "readTime",
+        "published",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Testimonial": {
+      "title": "Testimonial",
+      "description": "Verified client feedback approved for public display.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "clientName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "organization": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "serviceReceived": {
+          "type": "string",
+          "enum": ["solar", "cctv", "it", "multiple"]
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 1000
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "clientName",
+        "organization",
+        "serviceReceived",
+        "quote",
+        "approved",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Authorized Teracore administrator record.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "addedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "addedAt"]
+    }
+  },
+  "firestore": {
+    "/enquiries/{enquiryId}": {
+      "schema": { "$ref": "#/entities/Enquiry" },
+      "description": "Customer quote requests and consultation submissions. Public create, Admin-only read/update/delete."
+    },
+    "/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/Project" },
+      "description": "Teracore engineering projects portfolio. Public read when published, Admin-only write."
+    },
+    "/insights/{insightId}": {
+      "schema": { "$ref": "#/entities/Insight" },
+      "description": "Teracore industry insights and articles. Public read when published, Admin-only write."
+    },
+    "/testimonials/{testimonialId}": {
+      "schema": { "$ref": "#/entities/Testimonial" },
+      "description": "Verified customer testimonials. Public read when approved, Admin-only write."
+    },
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Authorized admin UIDs."
+    }
+  }
+}

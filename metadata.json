@@ -1,0 +1,6 @@
+{
+  "name": "Teracore",
+  "description": "Teracore delivers reliable solar energy systems, intelligent CCTV security, and professional IT infrastructure solutions for homes and businesses.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
