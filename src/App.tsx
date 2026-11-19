@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { FloatingActions } from './components/FloatingActions';
@@ -232,6 +233,7 @@ export default function App() {
       <main className="flex-1">{renderPage()}</main>
       <Footer onNavigate={navigate} />
       <FloatingActions currentPath={currentPath} onNavigate={navigate} />
+      <SpeedInsights />
     </div>
   );
 }
