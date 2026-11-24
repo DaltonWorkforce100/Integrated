@@ -72,8 +72,9 @@ export function AboutPage({ onNavigate }: AboutPageProps) {
                 <span>Ongoing technical support and preventative maintenance options post-installation.</span>
               </li>
             </ul>
-            <div className="pt-2 text-xs text-slate-500">
-              Operating Footprint: {TERACORE_BRAND.operatingAreas}
+            <div className="pt-2 space-y-1 text-xs text-slate-500">
+              <div>Headquarters: {TERACORE_BRAND.headquarters}</div>
+              <div>Operating Footprint: {TERACORE_BRAND.operatingAreas}</div>
             </div>
           </div>
         </div>

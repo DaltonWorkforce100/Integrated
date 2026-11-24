@@ -127,6 +127,26 @@ service cloud.firestore {
         && data.addedAt is timestamp;
     }
 
+    function isValidIntegrationConfig(data) {
+      return data.keys().hasAll([
+          'id', 'spreadsheetId', 'spreadsheetUrl', 'spreadsheetTitle',
+          'sheetName', 'updatedBy', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'spreadsheetId', 'spreadsheetUrl', 'spreadsheetTitle',
+          'sheetName', 'lastSyncedCount', 'updatedBy', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id.size() <= 64
+        && data.spreadsheetId is string && data.spreadsheetId.size() >= 5 && data.spreadsheetId.size() <= 200
+        && data.spreadsheetUrl is string && data.spreadsheetUrl.size() >= 10 && data.spreadsheetUrl.size() <= 400
+        && data.spreadsheetTitle is string && data.spreadsheetTitle.size() >= 1 && data.spreadsheetTitle.size() <= 200
+        && data.sheetName is string && data.sheetName.size() >= 1 && data.sheetName.size() <= 120
+        && (!('lastSyncedCount' in data) || (data.lastSyncedCount is int && data.lastSyncedCount >= 0))
+        && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+        && data.updatedAt is timestamp;
+    }
+
     match /enquiries/{enquiryId} {
       allow get: if isAdmin() && isValidId(enquiryId);
       allow list: if isAdmin();
@@ -220,6 +240,28 @@ service cloud.firestore {
         && incoming().addedAt == request.time;
       allow update: if false;
       allow delete: if isBootstrappedAdmin() && isValidId(uid);
+    }
+
+    match /integrations/{integrationId} {
+      allow get: if isAdmin() && isValidId(integrationId);
+      allow list: if isAdmin();
+      allow create: if isAdmin()
+        && isValidId(integrationId)
+        && isValidIntegrationConfig(incoming())
+        && incoming().id == integrationId
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin()
+        && isValidId(integrationId)
+        && isValidIntegrationConfig(incoming())
+        && incoming().id == existing().id
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'spreadsheetId', 'spreadsheetUrl', 'spreadsheetTitle',
+          'sheetName', 'lastSyncedCount', 'updatedBy', 'updatedAt'
+        ]);
+      allow delete: if isAdmin() && isValidId(integrationId);
     }
   }
 }

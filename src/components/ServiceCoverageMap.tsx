@@ -23,6 +23,7 @@ import {
 export interface ServiceHub {
   id: string;
   name: string;
+  shortLabel: string;
   city: string;
   coverageNote: string;
   position: google.maps.LatLngLiteral;
@@ -30,8 +31,17 @@ export interface ServiceHub {
 
 const TERACORE_HUBS: ServiceHub[] = [
   {
+    id: 'enugu',
+    name: 'Teracore Integrated Solution Headquarters',
+    shortLabel: 'Enugu (HQ)',
+    city: 'Enugu State, Nigeria',
+    coverageNote: 'Corporate Headquarters — Solar Energy, CCTV Security & Business IT Infrastructure across Enugu & Southeast.',
+    position: { lat: 6.4584, lng: 7.5464 },
+  },
+  {
     id: 'lagos',
     name: 'Teracore Lagos Operations Hub',
+    shortLabel: 'Lagos',
     city: 'Victoria Island, Lagos',
     coverageNote: 'Solar PV, Hybrid Inverters, IP CCTV & Commercial IT Deployments across Lagos & Southwest.',
     position: { lat: 6.4281, lng: 3.4219 },
@@ -39,6 +49,7 @@ const TERACORE_HUBS: ServiceHub[] = [
   {
     id: 'abuja',
     name: 'Teracore Abuja Operations Hub',
+    shortLabel: 'Abuja',
     city: 'Central Business District, Abuja',
     coverageNote: 'Enterprise Solar Microgrids, Perimeter Security & Structured Networking across FCT & North-Central.',
     position: { lat: 9.0579, lng: 7.4951 },
@@ -46,6 +57,7 @@ const TERACORE_HUBS: ServiceHub[] = [
   {
     id: 'ph',
     name: 'Teracore Port Harcourt Operations Hub',
+    shortLabel: 'Port Harcourt',
     city: 'GRA, Port Harcourt',
     coverageNote: 'Commercial Hybrid Power, Industrial Surveillance & Branch IT Support across South-South.',
     position: { lat: 4.8156, lng: 7.0498 },
@@ -253,7 +265,7 @@ function MapInteractiveWorkspace({
   const { suggestions, isLoading: suggestionsLoading, resetSession } =
     useAutocompleteSuggestions(searchInput);
 
-  const [openHubId, setOpenHubId] = useState<string | null>('lagos');
+  const [openHubId, setOpenHubId] = useState<string | null>('enugu');
   const [selectedSite, setSelectedSite] = useState<SelectedSite | null>(null);
   const [siteInfoOpen, setSiteInfoOpen] = useState(false);
   const [focusTarget, setFocusTarget] = useState<{
@@ -423,7 +435,7 @@ function MapInteractiveWorkspace({
                 }`}
               >
                 <Compass className="w-3.5 h-3.5 text-emerald-500" />
-                <span>{hub.city.split(',')[1]?.trim() || hub.city}</span>
+                <span>{hub.shortLabel}</span>
               </button>
             );
           })}
@@ -584,7 +596,7 @@ function MapInteractiveWorkspace({
 export function ServiceCoverageMap({
   onSelectAddress,
   title = 'Service Coverage & Site Location Lookup',
-  subtitle = 'Explore Teracore Integrated Solution regional hubs in Lagos, Abuja, and Port Harcourt, or search and pin your site address before submitting an enquiry.',
+  subtitle = 'Explore Teracore Integrated Solution headquarters in Enugu State and regional hubs in Lagos, Abuja, and Port Harcourt, or search and pin your site address before submitting an enquiry.',
 }: ServiceCoverageMapProps) {
   const envKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined) || '';
   const [apiKey, setApiKey] = useState<string>(envKey);
@@ -629,7 +641,7 @@ export function ServiceCoverageMap({
             Interactive map key is not configured in this environment.
           </div>
           <p>
-            You can still enter your site city or street address directly in the consultation form. Teracore operates hubs in Victoria Island (Lagos), Central Business District (Abuja), and GRA (Port Harcourt).
+            You can still enter your site city or street address directly in the consultation form. Teracore is headquartered in Enugu State, Nigeria, with regional operations in Lagos, Abuja, and Port Harcourt.
           </p>
         </div>
       ) : (

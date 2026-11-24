@@ -76,3 +76,14 @@ export interface ApplianceItem {
   defaultHours: number;
   category: 'Cooling' | 'Computing & Office' | 'Lighting & Home' | 'Pumps & Heavy';
 }
+
+export interface SheetsIntegrationConfig {
+  id: string;
+  spreadsheetId: string;
+  spreadsheetUrl: string;
+  spreadsheetTitle: string;
+  sheetName: string;
+  lastSyncedCount?: number;
+  updatedBy: string;
+  updatedAt: Date | null;
+}

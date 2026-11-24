@@ -10,8 +10,8 @@ export const TERACORE_BRAND = {
   phoneHref: 'tel:+2347066022908',
   whatsappNumber: '2347066022908',
   email: 'trevorstones336@gmail.com',
-  operatingAreas: 'Lagos · Abuja · Port Harcourt · Commercial Deployments Nationwide',
-  headquarters: 'Victoria Island, Lagos, Nigeria',
+  operatingAreas: 'Enugu (Headquarters) · Lagos · Abuja · Port Harcourt · Commercial Deployments Nationwide',
+  headquarters: 'Enugu State, Nigeria',
 };
 
 export function buildWhatsAppUrl(prefilledMessage: string): string {

@@ -43,9 +43,9 @@ const SEARCH_STARTER_PROMPTS = [
 ];
 
 const MAPS_STARTER_PROMPTS = [
-  'Commercial districts in Victoria Island Lagos for office IT deployment',
+  'Commercial districts in Enugu State for solar and IT deployment',
   'Coverage & logistics notes for solar installations in Central Business District Abuja',
-  'Key access considerations for industrial CCTV deployments in GRA Port Harcourt',
+  'Key access considerations for industrial CCTV deployments in Victoria Island Lagos',
 ];
 
 export function FloatingActions({ currentPath, onNavigate }: FloatingActionsProps) {

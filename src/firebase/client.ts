@@ -1,12 +1,53 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import {
+  getAuth,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithPopup,
+  type User,
+} from 'firebase/auth';
 import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+const typedConfig = firebaseConfig as typeof firebaseConfig & { firestoreDatabaseId?: string };
+export const db = typedConfig.firestoreDatabaseId
+  ? getFirestore(app, typedConfig.firestoreDatabaseId)
+  : getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+
+export const SHEETS_SCOPES = ['https://www.googleapis.com/auth/spreadsheets'] as const;
+for (const scope of SHEETS_SCOPES) {
+  googleProvider.addScope(scope);
+}
+
+// Strict in-memory cache for OAuth access tokens (never stored in localStorage or sessionStorage)
+let cachedGoogleAccessToken: string | null = null;
+
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    cachedGoogleAccessToken = null;
+  }
+});
+
+export async function signInWithGoogleSheets(): Promise<{
+  user: User;
+  accessToken: string | null;
+}> {
+  const result = await signInWithPopup(auth, googleProvider);
+  const credential = GoogleAuthProvider.credentialFromResult(result);
+  cachedGoogleAccessToken = credential?.accessToken ?? null;
+  return { user: result.user, accessToken: cachedGoogleAccessToken };
+}
+
+export function getGoogleAccessToken(): string | null {
+  return cachedGoogleAccessToken;
+}
+
+export function clearGoogleAccessToken(): void {
+  cachedGoogleAccessToken = null;
+}
 
 export const BOOTSTRAPPED_ADMIN_EMAIL = 'allidavid473@gmail.com';
 

@@ -2,6 +2,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -12,13 +13,14 @@ import {
   where,
   type Timestamp,
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase/client';
+import { auth, db, handleFirestoreError, OperationType } from '../firebase/client';
 import type {
   EnquiryInput,
   EnquiryRecord,
   EnquiryStatus,
   InsightArticle,
   ProjectItem,
+  SheetsIntegrationConfig,
   TestimonialItem,
 } from '../types/teracore';
 
@@ -445,6 +447,71 @@ export async function deleteTestimonial(id: string): Promise<void> {
   const path = `testimonials/${id}`;
   try {
     await deleteDoc(doc(db, 'testimonials', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+// Google Sheets Integration Configuration
+const SHEETS_INTEGRATION_ID = 'sheets';
+
+export async function fetchSheetsIntegration(): Promise<SheetsIntegrationConfig | null> {
+  const path = `integrations/${SHEETS_INTEGRATION_ID}`;
+  try {
+    const snap = await getDoc(doc(db, 'integrations', SHEETS_INTEGRATION_ID));
+    if (!snap.exists()) return null;
+    const data = snap.data();
+    return {
+      id: String(data.id ?? snap.id),
+      spreadsheetId: String(data.spreadsheetId ?? ''),
+      spreadsheetUrl: String(data.spreadsheetUrl ?? ''),
+      spreadsheetTitle: String(data.spreadsheetTitle ?? ''),
+      sheetName: String(data.sheetName ?? ''),
+      lastSyncedCount:
+        typeof data.lastSyncedCount === 'number' ? data.lastSyncedCount : undefined,
+      updatedBy: String(data.updatedBy ?? ''),
+      updatedAt: toDateOrNull(data.updatedAt),
+    };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+  }
+}
+
+export async function saveSheetsIntegration(input: {
+  spreadsheetId: string;
+  spreadsheetUrl: string;
+  spreadsheetTitle: string;
+  sheetName: string;
+  lastSyncedCount?: number;
+}): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) {
+    throw new Error('Administrator sign-in is required to save spreadsheet settings.');
+  }
+  const path = `integrations/${SHEETS_INTEGRATION_ID}`;
+  const payload: Record<string, unknown> = {
+    id: SHEETS_INTEGRATION_ID,
+    spreadsheetId: cleanStr(input.spreadsheetId, 200),
+    spreadsheetUrl: cleanStr(input.spreadsheetUrl, 400),
+    spreadsheetTitle: cleanStr(input.spreadsheetTitle, 200),
+    sheetName: cleanStr(input.sheetName, 120),
+    updatedBy: cleanStr(uid, 128),
+    updatedAt: serverTimestamp(),
+  };
+  if (typeof input.lastSyncedCount === 'number' && input.lastSyncedCount >= 0) {
+    payload.lastSyncedCount = Math.floor(input.lastSyncedCount);
+  }
+  try {
+    await setDoc(doc(db, 'integrations', SHEETS_INTEGRATION_ID), payload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function clearSheetsIntegration(): Promise<void> {
+  const path = `integrations/${SHEETS_INTEGRATION_ID}`;
+  try {
+    await deleteDoc(doc(db, 'integrations', SHEETS_INTEGRATION_ID));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }

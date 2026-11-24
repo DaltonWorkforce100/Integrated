@@ -1,7 +1,23 @@
 import { useEffect, useState } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
-import { LogOut, Plus, Trash2, ShieldAlert, CheckCircle2 } from 'lucide-react';
-import { auth, BOOTSTRAPPED_ADMIN_EMAIL, googleProvider } from '../firebase/client';
+import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
+import {
+  CheckCircle2,
+  Download,
+  LayoutList,
+  LogOut,
+  Plus,
+  ShieldAlert,
+  Table2,
+  Trash2,
+  X,
+} from 'lucide-react';
+import {
+  auth,
+  BOOTSTRAPPED_ADMIN_EMAIL,
+  clearGoogleAccessToken,
+  getGoogleAccessToken,
+  signInWithGoogleSheets,
+} from '../firebase/client';
 import {
   createInsight,
   createProject,
@@ -19,6 +35,8 @@ import {
   toggleTestimonialApproved,
   updateEnquiryStatus,
 } from '../services/firestoreService';
+import { buildEnquiriesCsv } from '../services/googleSheetsService';
+import { AdminSheetsPanel } from '../components/AdminSheetsPanel';
 import type {
   EnquiryRecord,
   EnquiryServiceType,
@@ -30,12 +48,18 @@ import type {
 } from '../types/teracore';
 
 type AdminTab = 'enquiries' | 'projects' | 'insights' | 'testimonials';
+type EnquiriesViewMode = 'spreadsheet' | 'cards';
 
 export function AdminPage() {
   const [user, setUser] = useState<User | null>(null);
+  const [sheetsAccessToken, setSheetsAccessToken] = useState<string | null>(() =>
+    getGoogleAccessToken()
+  );
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AdminTab>('enquiries');
+  const [enquiriesView, setEnquiriesView] = useState<EnquiriesViewMode>('spreadsheet');
+  const [selectedEnquiry, setSelectedEnquiry] = useState<EnquiryRecord | null>(null);
 
   const [enquiries, setEnquiries] = useState<EnquiryRecord[]>([]);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -70,6 +94,7 @@ export function AdminPage() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      setSheetsAccessToken(currentUser ? getGoogleAccessToken() : null);
       setAuthLoading(false);
     });
     return () => unsub();
@@ -105,10 +130,19 @@ export function AdminPage() {
   const handleGoogleLogin = async () => {
     setAuthError(null);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const { accessToken } = await signInWithGoogleSheets();
+      setSheetsAccessToken(accessToken);
     } catch {
-      setAuthError('Sign-in was cancelled or blocked. Please allow the sign-in popup and try again.');
+      setAuthError(
+        'Sign-in was cancelled or blocked. Please allow the sign-in popup and try again.'
+      );
     }
+  };
+
+  const handleSignOut = async () => {
+    clearGoogleAccessToken();
+    setSheetsAccessToken(null);
+    await signOut(auth);
   };
 
   if (authLoading) {
@@ -128,7 +162,7 @@ export function AdminPage() {
               Teracore Staff Portal
             </h1>
             <p className="text-sm text-slate-600 leading-relaxed">
-              Sign in with an authorized Google account to manage customer enquiries, projects, insights, and approved client testimonials.
+              Sign in with an authorized Google account to manage customer enquiries, connect Google Sheets, and publish projects or insights.
             </p>
             {authError && (
               <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 text-left">
@@ -138,9 +172,27 @@ export function AdminPage() {
             <button
               type="button"
               onClick={() => void handleGoogleLogin()}
-              className="w-full py-3 px-4 text-sm font-semibold text-white bg-navy-900 hover:bg-navy-800 rounded-lg transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center gap-3 w-full py-2.5 px-4 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-xs transition-colors cursor-pointer"
             >
-              Sign in with Google
+              <svg viewBox="0 0 48 48" className="w-5 h-5 shrink-0" aria-hidden="true">
+                <path
+                  fill="#EA4335"
+                  d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+                />
+                <path
+                  fill="#4285F4"
+                  d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+                />
+              </svg>
+              <span>Sign in with Google</span>
             </button>
           </div>
         </div>
@@ -156,9 +208,21 @@ export function AdminPage() {
       item.fullName.toLowerCase().includes(term) ||
       item.location.toLowerCase().includes(term) ||
       item.serviceType.toLowerCase().includes(term) ||
-      item.phone.toLowerCase().includes(term);
+      item.phone.toLowerCase().includes(term) ||
+      (item.email ?? '').toLowerCase().includes(term);
     return matchesStatus && matchesSearch;
   });
+
+  const handleExportCsv = () => {
+    const csv = buildEnquiriesCsv(filteredEnquiries);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `teracore-customer-enquiries-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -226,7 +290,7 @@ export function AdminPage() {
           </div>
           <button
             type="button"
-            onClick={() => void signOut(auth)}
+            onClick={() => void handleSignOut()}
             className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 border border-slate-200 hover:bg-slate-50 rounded-lg cursor-pointer self-start sm:self-auto"
           >
             <LogOut className="w-3.5 h-3.5" />
@@ -264,95 +328,328 @@ export function AdminPage() {
           ))}
         </div>
 
-        {/* Tab 1: Enquiries */}
+        {/* Tab 1: Enquiries (Backend Spreadsheet View + Google Sheets Sync) */}
         {activeTab === 'enquiries' && (
-          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <input
-                type="search"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by name, phone, location, or service..."
-                className="w-full sm:w-80 px-3.5 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600"
-              />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as 'all' | EnquiryStatus)}
-                className="px-3.5 py-2 text-xs font-semibold border border-slate-200 rounded-lg bg-slate-50"
-              >
-                <option value="all">All Statuses</option>
-                <option value="new">New</option>
-                <option value="contacted">Contacted</option>
-                <option value="quoted">Quoted</option>
-                <option value="completed">Completed</option>
-                <option value="archived">Archived</option>
-              </select>
-            </div>
+          <div className="space-y-5">
+            <AdminSheetsPanel enquiries={enquiries} initialAccessToken={sheetsAccessToken} />
 
-            {filteredEnquiries.length === 0 ? (
-              <div className="p-10 text-center text-sm text-slate-500">
-                No enquiries match your current filter.
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+              <div className="p-5 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <input
+                    type="search"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search by name, phone, email, location, or service..."
+                    className="w-full sm:w-80 px-3.5 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600"
+                  />
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as 'all' | EnquiryStatus)}
+                    className="px-3.5 py-2 text-xs font-semibold border border-slate-200 rounded-lg bg-slate-50"
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="new">New</option>
+                    <option value="contacted">Contacted</option>
+                    <option value="quoted">Quoted</option>
+                    <option value="completed">Completed</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setEnquiriesView('spreadsheet')}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md cursor-pointer whitespace-nowrap ${
+                        enquiriesView === 'spreadsheet'
+                          ? 'bg-navy-900 text-white'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <Table2 className="w-3.5 h-3.5" />
+                      <span>Spreadsheet View</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEnquiriesView('cards')}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md cursor-pointer whitespace-nowrap ${
+                        enquiriesView === 'cards'
+                          ? 'bg-navy-900 text-white'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <LayoutList className="w-3.5 h-3.5" />
+                      <span>Cards View</span>
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={filteredEnquiries.length === 0}
+                    onClick={handleExportCsv}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 border border-slate-200 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <Download className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Export CSV</span>
+                  </button>
+                </div>
               </div>
-            ) : (
-              <div className="divide-y divide-slate-200">
-                {filteredEnquiries.map((enq) => (
-                  <div key={enq.id} className="p-5 space-y-3 hover:bg-slate-50/70">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <span className="font-display font-bold text-slate-900">{enq.fullName}</span>
-                        <span className="text-xs text-slate-500 ml-2 font-mono tabular-nums">
-                          {enq.phone}
-                          {enq.email ? ` · ${enq.email}` : ''}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={enq.status}
-                          onChange={(e) =>
-                            void updateEnquiryStatus(enq.id, e.target.value as EnquiryStatus)
-                          }
-                          className="px-2.5 py-1.5 text-xs font-semibold border border-slate-300 rounded-md bg-white"
-                        >
-                          <option value="new">New</option>
-                          <option value="contacted">Contacted</option>
-                          <option value="quoted">Quoted</option>
-                          <option value="completed">Completed</option>
-                          <option value="archived">Archived</option>
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => void deleteEnquiry(enq.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-600 cursor-pointer"
-                          aria-label="Delete enquiry"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
 
-                    <div className="text-xs text-slate-500">
-                      <span className="font-semibold text-slate-800 uppercase">{enq.serviceType}</span>
-                      <span> · {enq.location}</span>
-                      <span> · Contact via {enq.preferredContact}</span>
-                      {enq.preferredDate && <span> · Target date: {enq.preferredDate}</span>}
-                      {enq.createdAt && (
-                        <span className="font-mono tabular-nums">
-                          {' '}
-                          · {enq.createdAt.toLocaleDateString()}
+              {filteredEnquiries.length === 0 ? (
+                <div className="p-10 text-center text-sm text-slate-500">
+                  No enquiries match your current filter.
+                </div>
+              ) : enquiriesView === 'spreadsheet' ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs text-left border-collapse">
+                    <thead className="bg-slate-100 border-b border-slate-200 text-slate-700">
+                      <tr>
+                        <th className="px-3 py-2.5 font-semibold border-r border-slate-200 w-10 text-center">
+                          #
+                        </th>
+                        <th className="px-3 py-2.5 font-semibold border-r border-slate-200 whitespace-nowrap">
+                          Submitted
+                        </th>
+                        <th className="px-3 py-2.5 font-semibold border-r border-slate-200 whitespace-nowrap">
+                          Client Name
+                        </th>
+                        <th className="px-3 py-2.5 font-semibold border-r border-slate-200 whitespace-nowrap">
+                          Phone / WhatsApp
+                        </th>
+                        <th className="px-3 py-2.5 font-semibold border-r border-slate-200 whitespace-nowrap">
+                          Email
+                        </th>
+                        <th className="px-3 py-2.5 font-semibold border-r border-slate-200 whitespace-nowrap">
+                          Division
+                        </th>
+                        <th className="px-3 py-2.5 font-semibold border-r border-slate-200 whitespace-nowrap">
+                          Location
+                        </th>
+                        <th className="px-3 py-2.5 font-semibold border-r border-slate-200 whitespace-nowrap">
+                          Contact Via
+                        </th>
+                        <th className="px-3 py-2.5 font-semibold border-r border-slate-200 whitespace-nowrap">
+                          Target Date
+                        </th>
+                        <th className="px-3 py-2.5 font-semibold border-r border-slate-200 whitespace-nowrap">
+                          Status
+                        </th>
+                        <th className="px-3 py-2.5 font-semibold border-r border-slate-200 whitespace-nowrap">
+                          Requirements
+                        </th>
+                        <th className="px-3 py-2.5 font-semibold text-center whitespace-nowrap">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {filteredEnquiries.map((enq, index) => (
+                        <tr key={enq.id} className="hover:bg-slate-50/90 align-top">
+                          <td className="px-3 py-2.5 border-r border-slate-200 text-center font-mono tabular-nums text-slate-400">
+                            {index + 1}
+                          </td>
+                          <td className="px-3 py-2.5 border-r border-slate-200 whitespace-nowrap font-mono tabular-nums text-slate-600">
+                            {enq.createdAt ? enq.createdAt.toLocaleDateString() : '—'}
+                          </td>
+                          <td className="px-3 py-2.5 border-r border-slate-200 whitespace-nowrap font-semibold text-slate-900">
+                            {enq.fullName}
+                          </td>
+                          <td className="px-3 py-2.5 border-r border-slate-200 whitespace-nowrap font-mono tabular-nums text-slate-700">
+                            {enq.phone}
+                          </td>
+                          <td className="px-3 py-2.5 border-r border-slate-200 whitespace-nowrap text-slate-600">
+                            {enq.email || '—'}
+                          </td>
+                          <td className="px-3 py-2.5 border-r border-slate-200 whitespace-nowrap uppercase font-semibold text-navy-900">
+                            {enq.serviceType}
+                          </td>
+                          <td className="px-3 py-2.5 border-r border-slate-200 max-w-[180px] truncate text-slate-700" title={enq.location}>
+                            {enq.location}
+                          </td>
+                          <td className="px-3 py-2.5 border-r border-slate-200 whitespace-nowrap capitalize text-slate-600">
+                            {enq.preferredContact}
+                          </td>
+                          <td className="px-3 py-2.5 border-r border-slate-200 whitespace-nowrap font-mono tabular-nums text-slate-600">
+                            {enq.preferredDate || '—'}
+                          </td>
+                          <td className="px-2.5 py-2 border-r border-slate-200 whitespace-nowrap">
+                            <select
+                              value={enq.status}
+                              onChange={(e) =>
+                                void updateEnquiryStatus(enq.id, e.target.value as EnquiryStatus)
+                              }
+                              aria-label={`Status for ${enq.fullName}`}
+                              className="px-2 py-1 text-xs font-semibold border border-slate-300 rounded bg-white"
+                            >
+                              <option value="new">New</option>
+                              <option value="contacted">Contacted</option>
+                              <option value="quoted">Quoted</option>
+                              <option value="completed">Completed</option>
+                              <option value="archived">Archived</option>
+                            </select>
+                          </td>
+                          <td className="px-3 py-2.5 border-r border-slate-200 max-w-xs">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedEnquiry(enq)}
+                              className="text-left text-slate-700 hover:text-emerald-700 line-clamp-2 cursor-pointer"
+                              title="Click to read full project details"
+                            >
+                              {enq.projectDescription}
+                            </button>
+                          </td>
+                          <td className="px-3 py-2 text-center whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => void deleteEnquiry(enq.id)}
+                              className="p-1 text-slate-400 hover:text-red-600 cursor-pointer"
+                              aria-label={`Delete enquiry from ${enq.fullName}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-200">
+                  {filteredEnquiries.map((enq) => (
+                    <div key={enq.id} className="p-5 space-y-3 hover:bg-slate-50/70">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <span className="font-display font-bold text-slate-900">
+                            {enq.fullName}
+                          </span>
+                          <span className="text-xs text-slate-500 ml-2 font-mono tabular-nums">
+                            {enq.phone}
+                            {enq.email ? ` · ${enq.email}` : ''}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={enq.status}
+                            onChange={(e) =>
+                              void updateEnquiryStatus(enq.id, e.target.value as EnquiryStatus)
+                            }
+                            className="px-2.5 py-1.5 text-xs font-semibold border border-slate-300 rounded-md bg-white"
+                          >
+                            <option value="new">New</option>
+                            <option value="contacted">Contacted</option>
+                            <option value="quoted">Quoted</option>
+                            <option value="completed">Completed</option>
+                            <option value="archived">Archived</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => void deleteEnquiry(enq.id)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 cursor-pointer"
+                            aria-label="Delete enquiry"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-slate-500">
+                        <span className="font-semibold text-slate-800 uppercase">
+                          {enq.serviceType}
                         </span>
+                        <span> · {enq.location}</span>
+                        <span> · Contact via {enq.preferredContact}</span>
+                        {enq.preferredDate && <span> · Target date: {enq.preferredDate}</span>}
+                        {enq.createdAt && (
+                          <span className="font-mono tabular-nums">
+                            {' '}
+                            · {enq.createdAt.toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-sm text-slate-700">{enq.projectDescription}</p>
+                      {enq.technicalSummary && (
+                        <div className="text-xs font-mono text-slate-600 bg-slate-100 rounded-lg p-2.5">
+                          {enq.technicalSummary}
+                        </div>
                       )}
                     </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
-                    <p className="text-sm text-slate-700">{enq.projectDescription}</p>
-                    {enq.technicalSummary && (
-                      <div className="text-xs font-mono text-slate-600 bg-slate-100 rounded-lg p-2.5">
-                        {enq.technicalSummary}
-                      </div>
-                    )}
-                  </div>
-                ))}
+        {/* Full Enquiry Detail Modal (from Spreadsheet Row Click) */}
+        {selectedEnquiry && (
+          <div
+            className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Customer Enquiry Details"
+          >
+            <div className="bg-white border border-slate-200 rounded-xl max-w-lg w-full p-6 space-y-4 shadow-xl">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-mono text-slate-500">{selectedEnquiry.id}</div>
+                  <h3 className="font-display text-lg font-bold text-slate-900 mt-0.5">
+                    {selectedEnquiry.fullName}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedEnquiry(null)}
+                  className="p-1 text-slate-400 hover:text-slate-900 cursor-pointer"
+                  aria-label="Close details"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-            )}
+              <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 border border-slate-200 rounded-lg p-3.5">
+                <div>
+                  <div className="text-slate-500">Phone / WhatsApp</div>
+                  <div className="font-mono font-semibold text-slate-900 mt-0.5">
+                    {selectedEnquiry.phone}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-slate-500">Division</div>
+                  <div className="uppercase font-semibold text-slate-900 mt-0.5">
+                    {selectedEnquiry.serviceType}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-slate-500">Site Location</div>
+                  <div className="font-medium text-slate-900 mt-0.5">
+                    {selectedEnquiry.location}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-slate-500">Preferred Contact</div>
+                  <div className="capitalize font-medium text-slate-900 mt-0.5">
+                    {selectedEnquiry.preferredContact}
+                    {selectedEnquiry.preferredDate ? ` · ${selectedEnquiry.preferredDate}` : ''}
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <div className="text-xs font-semibold text-slate-700">Project Description</div>
+                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
+                  {selectedEnquiry.projectDescription}
+                </p>
+              </div>
+              {selectedEnquiry.technicalSummary && (
+                <div className="space-y-1.5">
+                  <div className="text-xs font-semibold text-slate-700">Technical Specs</div>
+                  <div className="text-xs font-mono text-slate-700 bg-slate-100 rounded-lg p-3">
+                    {selectedEnquiry.technicalSummary}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -363,7 +660,9 @@ export function AdminPage() {
               onSubmit={(e) => void handleCreateProject(e)}
               className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 space-y-4 self-start"
             >
-              <h2 className="font-display text-lg font-bold text-slate-900">Add Portfolio Project</h2>
+              <h2 className="font-display text-lg font-bold text-slate-900">
+                Add Portfolio Project
+              </h2>
               <input
                 type="text"
                 required
@@ -385,7 +684,7 @@ export function AdminPage() {
                 <input
                   type="text"
                   required
-                  placeholder="Location (e.g. Lekki, Lagos)"
+                  placeholder="Location (e.g. Enugu, Nigeria)"
                   value={projLocation}
                   onChange={(e) => setProjLocation(e.target.value)}
                   className="px-3 py-2 text-sm border border-slate-300 rounded-lg"
@@ -469,7 +768,9 @@ export function AdminPage() {
               onSubmit={(e) => void handleCreateInsight(e)}
               className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 space-y-4 self-start"
             >
-              <h2 className="font-display text-lg font-bold text-slate-900">Publish Insight Article</h2>
+              <h2 className="font-display text-lg font-bold text-slate-900">
+                Publish Insight Article
+              </h2>
               <input
                 type="text"
                 required

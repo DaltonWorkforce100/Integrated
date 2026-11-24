@@ -271,6 +271,59 @@
         }
       },
       "required": ["uid", "email", "addedAt"]
+    },
+    "IntegrationConfig": {
+      "title": "IntegrationConfig",
+      "description": "Admin-managed Google Sheets connection metadata for syncing customer enquiries.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 64
+        },
+        "spreadsheetId": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 200
+        },
+        "spreadsheetUrl": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 400
+        },
+        "spreadsheetTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "sheetName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "lastSyncedCount": {
+          "type": "integer"
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "spreadsheetId",
+        "spreadsheetUrl",
+        "spreadsheetTitle",
+        "sheetName",
+        "updatedBy",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -293,6 +346,10 @@
     "/admins/{uid}": {
       "schema": { "$ref": "#/entities/AdminUser" },
       "description": "Authorized admin UIDs."
+    },
+    "/integrations/{integrationId}": {
+      "schema": { "$ref": "#/entities/IntegrationConfig" },
+      "description": "Admin-only Google Sheets integration configuration."
     }
   }
 }
