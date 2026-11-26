@@ -132,26 +132,54 @@ app.post('/api/assistant', async (req: Request, res: Response) => {
 
     // Note: googleMaps and googleSearch cannot be combined in the same request.
     // Never set responseMimeType or responseSchema when googleMaps is enabled.
-    const response = await ai.models.generateContent({
-      model: 'gemini-4-hydrogen',
-      contents: prompt,
-      config: {
-        systemInstruction: TERACORE_SYSTEM_INSTRUCTION,
-        tools: mode === 'maps' ? [{ googleMaps: {} }] : [{ googleSearch: {} }],
-        ...(mode === 'maps' && hasValidLatLng
-          ? {
-              toolConfig: {
-                retrievalConfig: {
-                  latLng: {
-                    latitude: rawLatLng.latitude as number,
-                    longitude: rawLatLng.longitude as number,
-                  },
+    const groundedConfig = {
+      systemInstruction: TERACORE_SYSTEM_INSTRUCTION,
+      tools: mode === 'maps' ? [{ googleMaps: {} }] : [{ googleSearch: {} }],
+      ...(mode === 'maps' && hasValidLatLng
+        ? {
+            toolConfig: {
+              retrievalConfig: {
+                latLng: {
+                  latitude: rawLatLng.latitude as number,
+                  longitude: rawLatLng.longitude as number,
                 },
               },
-            }
-          : {}),
-      },
-    });
+            },
+          }
+        : {}),
+    };
+
+    const isQuotaError = (err: unknown): boolean => {
+      const obj = err as { status?: number; message?: string };
+      return obj?.status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(obj?.message || '');
+    };
+
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: prompt,
+        config: groundedConfig,
+      });
+    } catch (firstErr: unknown) {
+      if (!isQuotaError(firstErr)) throw firstErr;
+      // Retry without Search/Maps grounding tools (grounding has stricter free-tier limits)
+      try {
+        response = await ai.models.generateContent({
+          model: 'gemini-4-hydrogen',
+          contents: prompt,
+          config: { systemInstruction: TERACORE_SYSTEM_INSTRUCTION },
+        });
+      } catch (secondErr: unknown) {
+        if (!isQuotaError(secondErr)) throw secondErr;
+        // Final real-model fallback to lighter-weight flash-lite model
+        response = await ai.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
+          contents: prompt,
+          config: { systemInstruction: TERACORE_SYSTEM_INSTRUCTION },
+        });
+      }
+    }
 
     const reply = response.text?.trim();
     if (!reply) {
@@ -201,7 +229,7 @@ app.post('/api/assistant', async (req: Request, res: Response) => {
     if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(msg)) {
       res.status(429).json({
         error:
-          'Assistant quota has been reached for now. Please try again shortly or reach our team via WhatsApp or the Quote Request form.',
+          'Your Gemini API key has hit its quota limit (often because the Google Cloud project needs billing enabled or the free tier is exhausted). Enable billing on the API key in Google AI Studio / Settings → Secrets, or reach our team via WhatsApp.',
       });
       return;
     }
