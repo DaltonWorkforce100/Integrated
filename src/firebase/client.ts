@@ -15,6 +15,8 @@ export const db = typedConfig.firestoreDatabaseId
   ? getFirestore(app, typedConfig.firestoreDatabaseId)
   : getFirestore(app);
 export const auth = getAuth(app);
+export const adminGoogleProvider = new GoogleAuthProvider();
+adminGoogleProvider.setCustomParameters({ prompt: 'select_account' });
 export const googleProvider = new GoogleAuthProvider();
 
 export const SHEETS_SCOPES = ['https://www.googleapis.com/auth/spreadsheets'] as const;
@@ -30,6 +32,11 @@ onAuthStateChanged(auth, (user) => {
     cachedGoogleAccessToken = null;
   }
 });
+
+export async function signInWithGoogleAdmin(): Promise<User> {
+  const result = await signInWithPopup(auth, adminGoogleProvider);
+  return result.user;
+}
 
 export async function signInWithGoogleSheets(): Promise<{
   user: User;

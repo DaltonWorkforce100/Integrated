@@ -302,6 +302,14 @@
           "minLength": 1,
           "maxLength": 120
         },
+        "syncMode": {
+          "type": "string",
+          "enum": ["oauth", "apps_script"]
+        },
+        "webhookUrl": {
+          "type": "string",
+          "maxLength": 400
+        },
         "lastSyncedCount": {
           "type": "integer"
         },

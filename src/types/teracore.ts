@@ -77,12 +77,16 @@ export interface ApplianceItem {
   category: 'Cooling' | 'Computing & Office' | 'Lighting & Home' | 'Pumps & Heavy';
 }
 
+export type SheetsSyncMode = 'oauth' | 'apps_script';
+
 export interface SheetsIntegrationConfig {
   id: string;
   spreadsheetId: string;
   spreadsheetUrl: string;
   spreadsheetTitle: string;
   sheetName: string;
+  syncMode?: SheetsSyncMode;
+  webhookUrl?: string;
   lastSyncedCount?: number;
   updatedBy: string;
   updatedAt: Date | null;

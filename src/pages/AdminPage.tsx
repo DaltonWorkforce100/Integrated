@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import {
+  Check,
   CheckCircle2,
+  Copy,
   Download,
   LayoutList,
   LogOut,
@@ -15,8 +18,9 @@ import {
   auth,
   BOOTSTRAPPED_ADMIN_EMAIL,
   clearGoogleAccessToken,
+  db,
   getGoogleAccessToken,
-  signInWithGoogleSheets,
+  signInWithGoogleAdmin,
 } from '../firebase/client';
 import {
   createInsight,
@@ -35,7 +39,7 @@ import {
   toggleTestimonialApproved,
   updateEnquiryStatus,
 } from '../services/firestoreService';
-import { buildEnquiriesCsv } from '../services/googleSheetsService';
+import { buildEnquiriesCsv, buildEnquiriesTsv } from '../services/googleSheetsService';
 import { AdminSheetsPanel } from '../components/AdminSheetsPanel';
 import type {
   EnquiryRecord,
@@ -56,6 +60,7 @@ export function AdminPage() {
     getGoogleAccessToken()
   );
   const [authLoading, setAuthLoading] = useState(true);
+  const [isAuthorizedAdmin, setIsAuthorizedAdmin] = useState<boolean | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AdminTab>('enquiries');
   const [enquiriesView, setEnquiriesView] = useState<EnquiriesViewMode>('spreadsheet');
@@ -69,6 +74,7 @@ export function AdminPage() {
 
   const [statusFilter, setStatusFilter] = useState<'all' | EnquiryStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [copiedTsv, setCopiedTsv] = useState(false);
 
   // New project form
   const [projTitle, setProjTitle] = useState('');
@@ -95,13 +101,42 @@ export function AdminPage() {
     const unsub = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setSheetsAccessToken(currentUser ? getGoogleAccessToken() : null);
+      setIsAuthorizedAdmin(currentUser ? null : false);
       setAuthLoading(false);
     });
     return () => unsub();
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    let active = true;
+    async function verifyAdminAccess() {
+      if (!user) {
+        if (active) setIsAuthorizedAdmin(false);
+        return;
+      }
+      if (!user.emailVerified) {
+        if (active) setIsAuthorizedAdmin(false);
+        return;
+      }
+      if (user.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL.toLowerCase()) {
+        if (active) setIsAuthorizedAdmin(true);
+        return;
+      }
+      try {
+        const snap = await getDoc(doc(db, 'admins', user.uid));
+        if (active) setIsAuthorizedAdmin(snap.exists());
+      } catch {
+        if (active) setIsAuthorizedAdmin(false);
+      }
+    }
+    void verifyAdminAccess();
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || isAuthorizedAdmin !== true) return;
     setDataError(null);
 
     const handleErr = (err: Error) => {
@@ -125,13 +160,13 @@ export function AdminPage() {
       unsubIns();
       unsubTest();
     };
-  }, [user]);
+  }, [user, isAuthorizedAdmin]);
 
   const handleGoogleLogin = async () => {
     setAuthError(null);
     try {
-      const { accessToken } = await signInWithGoogleSheets();
-      setSheetsAccessToken(accessToken);
+      await signInWithGoogleAdmin();
+      setSheetsAccessToken(getGoogleAccessToken());
     } catch {
       setAuthError(
         'Sign-in was cancelled or blocked. Please allow the sign-in popup and try again.'
@@ -162,7 +197,7 @@ export function AdminPage() {
               Teracore Staff Portal
             </h1>
             <p className="text-sm text-slate-600 leading-relaxed">
-              Sign in with an authorized Google account to manage customer enquiries, connect Google Sheets, and publish projects or insights.
+              Sign in with the authorized administrator Google account to manage customer enquiries, connect Google Sheets, and publish projects or insights.
             </p>
             {authError && (
               <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 text-left">
@@ -200,6 +235,42 @@ export function AdminPage() {
     );
   }
 
+  if (isAuthorizedAdmin === null) {
+    return (
+      <div className="py-24 text-center text-sm text-slate-600">
+        Verifying administrator permissions...
+      </div>
+    );
+  }
+
+  if (!isAuthorizedAdmin) {
+    return (
+      <div className="py-20 bg-slate-50">
+        <div className="max-w-md mx-auto px-4">
+          <div className="bg-white border border-red-200 rounded-xl p-8 space-y-5 text-center">
+            <div className="w-12 h-12 rounded-full bg-red-50 border border-red-200 flex items-center justify-center mx-auto">
+              <ShieldAlert className="w-6 h-6 text-red-600" />
+            </div>
+            <h1 className="font-display text-2xl font-bold text-slate-900">
+              Access Restricted
+            </h1>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Signed in as <span className="font-semibold text-slate-900">{user.email}</span>. Only the authorized Teracore administrator account can access the Staff Portal.
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 text-sm font-semibold text-white bg-navy-900 hover:bg-navy-800 rounded-lg transition-colors cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Sign Out &amp; Switch Account</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const filteredEnquiries = enquiries.filter((item) => {
     const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
     const term = searchTerm.trim().toLowerCase();
@@ -222,6 +293,17 @@ export function AdminPage() {
     a.download = `teracore-customer-enquiries-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleCopyForSheets = async () => {
+    const tsv = buildEnquiriesTsv(filteredEnquiries);
+    try {
+      await navigator.clipboard.writeText(tsv);
+      setCopiedTsv(true);
+      setTimeout(() => setCopiedTsv(false), 2500);
+    } catch {
+      handleExportCsv();
+    }
   };
 
   const handleCreateProject = async (e: React.FormEvent) => {
@@ -384,6 +466,25 @@ export function AdminPage() {
                       <span>Cards View</span>
                     </button>
                   </div>
+
+                  <button
+                    type="button"
+                    disabled={filteredEnquiries.length === 0}
+                    onClick={() => void handleCopyForSheets()}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 border border-slate-200 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    {copiedTsv ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-emerald-700">Copied! Paste into Google Sheets</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Copy for Google Sheets</span>
+                      </>
+                    )}
+                  </button>
 
                   <button
                     type="button"

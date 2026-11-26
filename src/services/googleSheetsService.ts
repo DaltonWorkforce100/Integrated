@@ -46,6 +46,10 @@ async function parseSheetsError(res: Response): Promise<string> {
       return 'Your Google Sheets session expired. Please reconnect your Google account and try again.';
     }
     if (res.status === 403) {
+      const apiMsg = data?.error?.message;
+      if (apiMsg && /disabled|not been used|scope|insufficient/i.test(apiMsg)) {
+        return apiMsg;
+      }
       return 'Access denied to this Google Sheet. Make sure your signed-in Google account has edit access and Sheets permission.';
     }
     if (res.status === 404) {
@@ -261,3 +265,148 @@ export function buildEnquiriesCsv(enquiries: EnquiryRecord[]): string {
   const values = formatEnquiriesAsSheetValues(enquiries);
   return values.map((row) => row.map((cell) => escapeCsvCell(cell)).join(',')).join('\n');
 }
+
+export function buildEnquiriesTsv(enquiries: EnquiryRecord[]): string {
+  const values = formatEnquiriesAsSheetValues(enquiries);
+  return values
+    .map((row) => row.map((cell) => cell.replace(/[\t\r\n]+/g, ' ')).join('\t'))
+    .join('\n');
+}
+
+export const APPS_SCRIPT_WEBHOOK_REGEX =
+  /^https:\/\/script\.google\.com\/macros\/s\/[a-zA-Z0-9_-]{10,200}\/exec$/;
+
+export function isValidAppsScriptWebhookUrl(input: string): boolean {
+  return APPS_SCRIPT_WEBHOOK_REGEX.test(input.trim());
+}
+
+export const APPS_SCRIPT_BRIDGE_CODE = `function doPost(e) {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+    var payload = JSON.parse(e.postData.contents);
+    var rows = payload.rows || [];
+    sheet.clearContents();
+    if (rows.length > 0) {
+      sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+      sheet.setFrozenRows(1);
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: true, count: Math.max(0, rows.length - 1) }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: err && err.message ? err.message : String(err) }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+
+function diagnoseAppsScriptHtml(html: string, finalUrl: string): string {
+  const withoutScripts = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ');
+  const titleMatch = withoutScripts.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = titleMatch?.[1]?.replace(/\s+/g, ' ').trim() || '';
+  const plainText = withoutScripts
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const combined = `${title} ${plainText}`.trim();
+
+  if (
+    /script function not found:\s*dopost|scriptfunctie niet gevonden:\s*dopost|not found:\s*dopost/i.test(
+      combined
+    )
+  ) {
+    return 'Apps Script says "Script function not found: doPost". Paste Code.gs, click Save (Ctrl+S), then click Deploy → Manage deployments → Edit (pencil) → Version: New version → Deploy.';
+  }
+  if (/accounts\.google\.com|servicelogin/i.test(finalUrl) || /sign in|google accounts/i.test(title)) {
+    return 'Google Apps Script redirected to a sign-in page. Check Deploy → Manage deployments: set Execute as "Me", Who has access "Anyone", and Version to a saved version.';
+  }
+  if (/unable to open the file|sorry, unable to open/i.test(combined)) {
+    return 'Google Apps Script returned "Unable to open the file" (often caused by multiple Google accounts signed in). Deploy from an Incognito window signed only into allidavid473@gmail.com.';
+  }
+  if (/authorization is required|need permission/i.test(combined)) {
+    return 'Apps Script requires authorization. Click Deploy → New deployment and complete Authorize access → Advanced → Go to project → Allow.';
+  }
+
+  const snippet = (plainText || title).slice(0, 180);
+  return snippet
+    ? `Google Apps Script returned an unexpected page instead of JSON: "${snippet}"`
+    : 'Google Apps Script returned an HTML page instead of JSON. Make sure Code.gs is saved and deployed as a New version with "Who has access: Anyone".';
+}
+
+export async function syncEnquiriesViaAppsScript(
+  firebaseIdToken: string,
+  webhookUrl: string,
+  enquiries: EnquiryRecord[]
+): Promise<number> {
+  const cleanedWebhook = webhookUrl.trim();
+  const rows = formatEnquiriesAsSheetValues(enquiries);
+
+  // 1. Try Express backend proxy when available
+  try {
+    const res = await fetch('/api/sheets-webhook', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${firebaseIdToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        webhookUrl: cleanedWebhook,
+        rows,
+      }),
+    });
+
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = (await res.json()) as {
+        ok?: boolean;
+        count?: number;
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || `Failed to sync via Apps Script (status ${res.status}).`);
+      }
+      return typeof data.count === 'number' ? data.count : enquiries.length;
+    }
+    // Non-JSON response (e.g. static SPA index.html fallback): fall through to direct browser POST
+  } catch (proxyErr) {
+    // Re-throw real backend validation/webhook errors; only fall through on network/SPA fallback
+    if (proxyErr instanceof Error && !/Failed to fetch|NetworkError/i.test(proxyErr.message)) {
+      throw proxyErr;
+    }
+  }
+
+  // 2. Direct browser POST fallback using text/plain CORS simple request
+  const directRes = await fetch(cleanedWebhook, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ rows }),
+    redirect: 'follow',
+  });
+
+  const directText = await directRes.text();
+  if (!directRes.ok) {
+    throw new Error(
+      `Google Apps Script returned status ${directRes.status}. Verify your Web App deployment.`
+    );
+  }
+
+  if (directText.trim().startsWith('<')) {
+    throw new Error(diagnoseAppsScriptHtml(directText, directRes.url || ''));
+  }
+
+  try {
+    const parsed = JSON.parse(directText) as { ok?: boolean; count?: number; error?: string };
+    if (parsed.ok === false) {
+      throw new Error(parsed.error || 'Google Apps Script reported an error.');
+    }
+    return typeof parsed.count === 'number' ? parsed.count : enquiries.length;
+  } catch (parseErr) {
+    if (parseErr instanceof Error && parseErr.message !== 'Unexpected end of JSON input') {
+      throw parseErr;
+    }
+    return enquiries.length;
+  }
+}
+

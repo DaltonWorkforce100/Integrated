@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import type { Request, Response } from 'express';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
@@ -189,6 +190,163 @@ app.post('/api/assistant', async (req: Request, res: Response) => {
     res.status(500).json({
       error: 'We could not process your question right now. Please submit your enquiry on the Request a Quote page.',
     });
+  }
+});
+
+const APPS_SCRIPT_URL_REGEX =
+  /^https:\/\/script\.google\.com\/macros\/s\/[a-zA-Z0-9_-]{10,200}\/exec$/;
+const BOOTSTRAPPED_ADMIN_EMAIL = 'allidavid473@gmail.com';
+
+function getFirebaseApiKey(): string {
+  try {
+    const raw = fs.readFileSync(path.resolve(__dirname, 'firebase-applet-config.json'), 'utf8');
+    const parsed = JSON.parse(raw) as { apiKey?: string };
+    return parsed.apiKey || '';
+  } catch {
+    return '';
+  }
+}
+
+async function verifyFirebaseAdminToken(idToken: string): Promise<boolean> {
+  const apiKey = getFirebaseApiKey();
+  if (!apiKey || !idToken) return false;
+
+  const lookupRes = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    }
+  );
+
+  if (!lookupRes.ok) return false;
+  const data = (await lookupRes.json()) as {
+    users?: Array<{ email?: string; emailVerified?: boolean; localId?: string }>;
+  };
+  const user = data.users?.[0];
+  return Boolean(
+    user?.localId &&
+      user?.emailVerified === true &&
+      user?.email?.toLowerCase() === BOOTSTRAPPED_ADMIN_EMAIL
+  );
+}
+
+function diagnoseAppsScriptHtml(html: string, finalUrl: string): string {
+  const withoutScripts = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ');
+  const titleMatch = withoutScripts.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = titleMatch?.[1]?.replace(/\s+/g, ' ').trim() || '';
+  const plainText = withoutScripts
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const combined = `${title} ${plainText}`.trim();
+
+  if (
+    /script function not found:\s*dopost|scriptfunctie niet gevonden:\s*dopost|not found:\s*dopost/i.test(
+      combined
+    )
+  ) {
+    return 'Apps Script says "Script function not found: doPost". In Apps Script, paste the Code.gs script, click Save (Ctrl+S), then click Deploy → Manage deployments → Edit (pencil) → set Version to "New version" → Deploy.';
+  }
+  if (/accounts\.google\.com|servicelogin/i.test(finalUrl) || /sign in|google accounts/i.test(title)) {
+    return 'Google Apps Script redirected to a sign-in page. Check Deploy → Manage deployments: ensure Type is "Web app", Execute as is "Me", Who has access is "Anyone", and Version is a saved version with Code.gs.';
+  }
+  if (/unable to open the file|sorry, unable to open/i.test(combined)) {
+    return 'Google Apps Script returned "Unable to open the file" (often caused by multiple Google accounts signed in at once). Open the Google Sheet in an Incognito window signed only into allidavid473@gmail.com and create a New deployment there.';
+  }
+  if (/authorization is required|need permission/i.test(combined)) {
+    return 'Apps Script requires authorization. In Apps Script, click Run on doPost (or Deploy → New deployment) and complete Authorize access → Advanced → Go to project → Allow.';
+  }
+
+  const snippet = (plainText || title).slice(0, 180);
+  return snippet
+    ? `Google Apps Script returned an unexpected page instead of JSON: "${snippet}"`
+    : 'Google Apps Script returned an HTML page instead of JSON. Make sure Code.gs is saved and deployed as a New version with "Who has access: Anyone".';
+}
+
+app.post('/api/sheets-webhook', async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) {
+      res.status(401).json({ error: 'Administrator sign-in token is required.' });
+      return;
+    }
+
+    const isAdmin = await verifyFirebaseAdminToken(token);
+    if (!isAdmin) {
+      res.status(403).json({ error: 'Only verified Teracore administrators can sync spreadsheets.' });
+      return;
+    }
+
+    const body = req.body as { webhookUrl?: unknown; rows?: unknown };
+    const webhookUrl = typeof body.webhookUrl === 'string' ? body.webhookUrl.trim() : '';
+    if (!APPS_SCRIPT_URL_REGEX.test(webhookUrl)) {
+      res.status(400).json({
+        error:
+          'Please enter a valid Google Apps Script Web App URL starting with https://script.google.com/macros/s/.../exec',
+      });
+      return;
+    }
+
+    if (
+      !Array.isArray(body.rows) ||
+      body.rows.length === 0 ||
+      body.rows.length > 5000 ||
+      !body.rows.every(
+        (r) => Array.isArray(r) && r.length <= 20 && r.every((cell) => typeof cell === 'string')
+      )
+    ) {
+      res.status(400).json({ error: 'Invalid spreadsheet row payload.' });
+      return;
+    }
+
+    const scriptRes = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows: body.rows }),
+      redirect: 'follow',
+    });
+
+    const contentType = scriptRes.headers.get('content-type') || '';
+    const text = await scriptRes.text();
+
+    if (!scriptRes.ok) {
+      res.status(502).json({
+        error: `Google Apps Script returned status ${scriptRes.status}. Verify the Web App deployment settings.`,
+      });
+      return;
+    }
+
+    if (contentType.includes('text/html') || text.trim().startsWith('<')) {
+      res.status(400).json({
+        error: diagnoseAppsScriptHtml(text, scriptRes.url || ''),
+      });
+      return;
+    }
+
+    let parsed: { ok?: boolean; count?: number; error?: string } = {};
+    try {
+      parsed = JSON.parse(text) as { ok?: boolean; count?: number; error?: string };
+    } catch {
+      parsed = { ok: true };
+    }
+
+    if (parsed.ok === false) {
+      res.status(502).json({ error: parsed.error || 'Google Apps Script reported an error.' });
+      return;
+    }
+
+    res.json({
+      ok: true,
+      count: typeof parsed.count === 'number' ? parsed.count : Math.max(0, body.rows.length - 1),
+    });
+  } catch (error) {
+    console.error('Sheets webhook sync error:', error);
+    res.status(500).json({ error: 'Unable to reach your Google Apps Script Web App URL.' });
   }
 });
 

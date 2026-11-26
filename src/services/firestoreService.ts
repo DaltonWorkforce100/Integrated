@@ -467,6 +467,8 @@ export async function fetchSheetsIntegration(): Promise<SheetsIntegrationConfig 
       spreadsheetUrl: String(data.spreadsheetUrl ?? ''),
       spreadsheetTitle: String(data.spreadsheetTitle ?? ''),
       sheetName: String(data.sheetName ?? ''),
+      syncMode: data.syncMode === 'apps_script' ? 'apps_script' : 'oauth',
+      webhookUrl: data.webhookUrl ? String(data.webhookUrl) : undefined,
       lastSyncedCount:
         typeof data.lastSyncedCount === 'number' ? data.lastSyncedCount : undefined,
       updatedBy: String(data.updatedBy ?? ''),
@@ -482,6 +484,8 @@ export async function saveSheetsIntegration(input: {
   spreadsheetUrl: string;
   spreadsheetTitle: string;
   sheetName: string;
+  syncMode?: 'oauth' | 'apps_script';
+  webhookUrl?: string;
   lastSyncedCount?: number;
 }): Promise<void> {
   const uid = auth.currentUser?.uid;
@@ -498,6 +502,13 @@ export async function saveSheetsIntegration(input: {
     updatedBy: cleanStr(uid, 128),
     updatedAt: serverTimestamp(),
   };
+  if (input.syncMode === 'oauth' || input.syncMode === 'apps_script') {
+    payload.syncMode = input.syncMode;
+  }
+  const cleanedWebhook = cleanStr(input.webhookUrl, 400);
+  if (cleanedWebhook) {
+    payload.webhookUrl = cleanedWebhook;
+  }
   if (typeof input.lastSyncedCount === 'number' && input.lastSyncedCount >= 0) {
     payload.lastSyncedCount = Math.floor(input.lastSyncedCount);
   }

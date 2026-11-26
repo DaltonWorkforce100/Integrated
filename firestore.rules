@@ -134,7 +134,7 @@ service cloud.firestore {
         ])
         && data.keys().hasOnly([
           'id', 'spreadsheetId', 'spreadsheetUrl', 'spreadsheetTitle',
-          'sheetName', 'lastSyncedCount', 'updatedBy', 'updatedAt'
+          'sheetName', 'syncMode', 'webhookUrl', 'lastSyncedCount', 'updatedBy', 'updatedAt'
         ])
         && isValidId(data.id)
         && data.id.size() <= 64
@@ -142,6 +142,8 @@ service cloud.firestore {
         && data.spreadsheetUrl is string && data.spreadsheetUrl.size() >= 10 && data.spreadsheetUrl.size() <= 400
         && data.spreadsheetTitle is string && data.spreadsheetTitle.size() >= 1 && data.spreadsheetTitle.size() <= 200
         && data.sheetName is string && data.sheetName.size() >= 1 && data.sheetName.size() <= 120
+        && (!('syncMode' in data) || data.syncMode in ['oauth', 'apps_script'])
+        && (!('webhookUrl' in data) || (data.webhookUrl is string && data.webhookUrl.size() <= 400 && data.webhookUrl.matches('^https://script\\.google\\.com/macros/s/[a-zA-Z0-9_\\-]+/exec$')))
         && (!('lastSyncedCount' in data) || (data.lastSyncedCount is int && data.lastSyncedCount >= 0))
         && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
         && data.updatedAt is timestamp;
@@ -259,7 +261,7 @@ service cloud.firestore {
         && incoming().updatedAt == request.time
         && incoming().diff(existing()).affectedKeys().hasOnly([
           'spreadsheetId', 'spreadsheetUrl', 'spreadsheetTitle',
-          'sheetName', 'lastSyncedCount', 'updatedBy', 'updatedAt'
+          'sheetName', 'syncMode', 'webhookUrl', 'lastSyncedCount', 'updatedBy', 'updatedAt'
         ]);
       allow delete: if isAdmin() && isValidId(integrationId);
     }
