@@ -112,6 +112,18 @@ export function FloatingActions({ currentPath, onNavigate }: FloatingActionsProp
           ...(activeMode === 'maps' && userCoords ? { latLng: userCoords } : {}),
         }),
       });
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            text: 'The live AI assistant backend is not active on this static link. You can use the AI Studio app link, or reach our engineering team directly via WhatsApp or the Quote Request form.',
+          },
+        ]);
+        return;
+      }
+
       const data = (await response.json()) as {
         reply?: string;
         webSources?: WebSource[];

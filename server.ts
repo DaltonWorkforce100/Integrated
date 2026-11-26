@@ -185,10 +185,30 @@ app.post('/api/assistant', async (req: Request, res: Response) => {
     }
 
     res.json({ reply, webSources, mapSources, mode });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Teracore assistant error:', error);
-    res.status(500).json({
-      error: 'We could not process your question right now. Please submit your enquiry on the Request a Quote page.',
+    const errObj = error as { status?: number; message?: string };
+    const status = typeof errObj?.status === 'number' ? errObj.status : 500;
+    const msg = typeof errObj?.message === 'string' ? errObj.message : '';
+
+    if (status === 403 || status === 401 || /API_KEY_INVALID|PERMISSION_DENIED/i.test(msg)) {
+      res.status(status).json({
+        error:
+          'Assistant API key is missing or unauthorized. Please check GEMINI_API_KEY in Settings → Secrets (or your hosting environment variables).',
+      });
+      return;
+    }
+    if (status === 429 || /RESOURCE_EXHAUSTED|quota/i.test(msg)) {
+      res.status(429).json({
+        error:
+          'Assistant quota has been reached for now. Please try again shortly or reach our team via WhatsApp or the Quote Request form.',
+      });
+      return;
+    }
+
+    res.status(status >= 400 && status < 600 ? status : 500).json({
+      error:
+        'Unable to reach the AI assistant right now. Please try again or contact our engineering team via WhatsApp or the Quote Request form.',
     });
   }
 });

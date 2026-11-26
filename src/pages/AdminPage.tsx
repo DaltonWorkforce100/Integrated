@@ -167,10 +167,30 @@ export function AdminPage() {
     try {
       await signInWithGoogleAdmin();
       setSheetsAccessToken(getGoogleAccessToken());
-    } catch {
-      setAuthError(
-        'Sign-in was cancelled or blocked. Please allow the sign-in popup and try again.'
-      );
+    } catch (err: unknown) {
+      const code =
+        typeof err === 'object' && err !== null && 'code' in err
+          ? String((err as { code?: unknown }).code)
+          : '';
+      const host = window.location.hostname || 'this domain';
+
+      if (code === 'auth/unauthorized-domain') {
+        setAuthError(
+          `Domain not authorized (${host}): this Firebase project only allows Google Sign-In on authorized domains (such as the AI Studio Shared App URL). To sign in on Vercel or a custom domain, configure your own Firebase project and add "${host}" under Authentication → Settings → Authorized domains.`
+        );
+      } else if (code === 'auth/popup-blocked') {
+        setAuthError(
+          'Your browser blocked the Google sign-in popup. Please allow popups for this site (or open the link in Chrome/Safari instead of an in-app browser) and try again.'
+        );
+      } else if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        setAuthError(
+          'The Google sign-in popup was closed before completing sign-in. Please try again and keep the window open until sign-in finishes.'
+        );
+      } else {
+        setAuthError(
+          `Google sign-in failed${code ? ` (${code})` : ''}. Please allow popups and try again.`
+        );
+      }
     }
   };
 
