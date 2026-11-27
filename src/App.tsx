@@ -190,7 +190,7 @@ export default function App() {
       case '/insights':
         return <InsightsPage insights={insights} onNavigate={navigate} />;
       case '/contact':
-        return <ContactPage />;
+        return <ContactPage onNavigate={navigate} />;
       case '/request-a-quote':
         return (
           <QuotePage

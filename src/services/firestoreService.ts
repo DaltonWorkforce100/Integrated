@@ -20,6 +20,7 @@ import type {
   EnquiryStatus,
   InsightArticle,
   ProjectItem,
+  PublicGoogleFormConfig,
   SheetsIntegrationConfig,
   TestimonialItem,
 } from '../types/teracore';
@@ -523,6 +524,84 @@ export async function clearSheetsIntegration(): Promise<void> {
   const path = `integrations/${SHEETS_INTEGRATION_ID}`;
   try {
     await deleteDoc(doc(db, 'integrations', SHEETS_INTEGRATION_ID));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+// Public Google Form Configuration (for visitors on /quote and /contact)
+const PUBLIC_FORM_DOC_ID = 'active';
+const GOOGLE_FORM_URL_PATTERN = /^https:\/\/docs\.google\.com\/forms\/.+$/;
+
+export async function fetchPublishedGoogleForm(): Promise<PublicGoogleFormConfig | null> {
+  const path = 'publicForms';
+  try {
+    const q = query(collection(db, path), where('published', '==', true));
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    const d = snap.docs[0];
+    const data = d.data();
+    return {
+      id: String(data.id ?? d.id),
+      formId: String(data.formId ?? ''),
+      title: String(data.title ?? 'Teracore Google Form'),
+      description: data.description ? String(data.description) : undefined,
+      responderUri: String(data.responderUri ?? ''),
+      published: Boolean(data.published),
+      updatedBy: String(data.updatedBy ?? ''),
+      updatedAt: toDateOrNull(data.updatedAt),
+    };
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
+export async function publishPublicGoogleForm(input: {
+  formId: string;
+  title: string;
+  description?: string;
+  responderUri: string;
+}): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) {
+    throw new Error('Administrator sign-in is required to publish a Google Form.');
+  }
+
+  const cleanUri = cleanStr(input.responderUri, 400);
+  if (cleanUri.length < 20 || !GOOGLE_FORM_URL_PATTERN.test(cleanUri)) {
+    throw new Error('Google Form link must start with https://docs.google.com/forms/');
+  }
+
+  const rawFormId = cleanStr(input.formId, 200);
+  const safeFormId = rawFormId.length >= 5 ? rawFormId : 'external-google-form';
+
+  const payload: Record<string, unknown> = {
+    id: PUBLIC_FORM_DOC_ID,
+    formId: safeFormId,
+    title: cleanStr(input.title, 200) || 'Teracore Intake Form',
+    responderUri: cleanUri,
+    published: true,
+    updatedBy: cleanStr(uid, 128),
+    updatedAt: serverTimestamp(),
+  };
+
+  const cleanDesc = cleanStr(input.description, 1000);
+  if (cleanDesc) {
+    payload.description = cleanDesc;
+  }
+
+  const path = `publicForms/${PUBLIC_FORM_DOC_ID}`;
+  try {
+    await setDoc(doc(db, 'publicForms', PUBLIC_FORM_DOC_ID), payload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function unpublishPublicGoogleForm(): Promise<void> {
+  const path = `publicForms/${PUBLIC_FORM_DOC_ID}`;
+  try {
+    await deleteDoc(doc(db, 'publicForms', PUBLIC_FORM_DOC_ID));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }

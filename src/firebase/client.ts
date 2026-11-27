@@ -18,9 +18,21 @@ export const auth = getAuth(app);
 export const adminGoogleProvider = new GoogleAuthProvider();
 adminGoogleProvider.setCustomParameters({ prompt: 'select_account' });
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-export const SHEETS_SCOPES = ['https://www.googleapis.com/auth/spreadsheets'] as const;
-for (const scope of SHEETS_SCOPES) {
+export const WORKSPACE_SCOPES = [
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/forms.body',
+  'https://www.googleapis.com/auth/forms.body.readonly',
+  'https://www.googleapis.com/auth/forms.responses.readonly',
+] as const;
+
+export const SHEETS_SCOPES = WORKSPACE_SCOPES;
+
+for (const scope of WORKSPACE_SCOPES) {
   googleProvider.addScope(scope);
 }
 
@@ -38,7 +50,7 @@ export async function signInWithGoogleAdmin(): Promise<User> {
   return result.user;
 }
 
-export async function signInWithGoogleSheets(): Promise<{
+export async function signInWithGoogleWorkspace(): Promise<{
   user: User;
   accessToken: string | null;
 }> {
@@ -47,6 +59,8 @@ export async function signInWithGoogleSheets(): Promise<{
   cachedGoogleAccessToken = credential?.accessToken ?? null;
   return { user: result.user, accessToken: cachedGoogleAccessToken };
 }
+
+export const signInWithGoogleSheets = signInWithGoogleWorkspace;
 
 export function getGoogleAccessToken(): string | null {
   return cachedGoogleAccessToken;

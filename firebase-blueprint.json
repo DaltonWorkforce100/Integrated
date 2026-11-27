@@ -332,6 +332,59 @@
         "updatedBy",
         "updatedAt"
       ]
+    },
+    "PublicForm": {
+      "title": "PublicForm",
+      "description": "Publicly visible Google Form configuration published by an admin for visitors on the Request a Quote page.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 64
+        },
+        "formId": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 200
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "responderUri": {
+          "type": "string",
+          "minLength": 20,
+          "maxLength": 400,
+          "pattern": "^https://docs\\.google\\.com/forms/.*$"
+        },
+        "published": {
+          "type": "boolean"
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "formId",
+        "title",
+        "responderUri",
+        "published",
+        "updatedBy",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -358,6 +411,10 @@
     "/integrations/{integrationId}": {
       "schema": { "$ref": "#/entities/IntegrationConfig" },
       "description": "Admin-only Google Sheets integration configuration."
+    },
+    "/publicForms/{formConfigId}": {
+      "schema": { "$ref": "#/entities/PublicForm" },
+      "description": "Active Google Form published for website visitors to view and submit on the Request a Quote page."
     }
   }
 }

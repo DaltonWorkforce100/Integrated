@@ -91,3 +91,14 @@ export interface SheetsIntegrationConfig {
   updatedBy: string;
   updatedAt: Date | null;
 }
+
+export interface PublicGoogleFormConfig {
+  id: string;
+  formId: string;
+  title: string;
+  description?: string;
+  responderUri: string;
+  published: boolean;
+  updatedBy: string;
+  updatedAt: Date | null;
+}

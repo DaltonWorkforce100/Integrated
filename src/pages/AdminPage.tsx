@@ -41,6 +41,7 @@ import {
 } from '../services/firestoreService';
 import { buildEnquiriesCsv, buildEnquiriesTsv } from '../services/googleSheetsService';
 import { AdminSheetsPanel } from '../components/AdminSheetsPanel';
+import { AdminFormsPanel } from '../components/AdminFormsPanel';
 import type {
   EnquiryRecord,
   EnquiryServiceType,
@@ -51,7 +52,7 @@ import type {
   TestimonialItem,
 } from '../types/teracore';
 
-type AdminTab = 'enquiries' | 'projects' | 'insights' | 'testimonials';
+type AdminTab = 'enquiries' | 'forms' | 'projects' | 'insights' | 'testimonials';
 type EnquiriesViewMode = 'spreadsheet' | 'cards';
 
 export function AdminPage() {
@@ -412,6 +413,7 @@ export function AdminPage() {
           {(
             [
               { id: 'enquiries', label: `Enquiries (${enquiries.length})` },
+              { id: 'forms', label: 'Google Forms' },
               { id: 'projects', label: `Projects (${projects.length})` },
               { id: 'insights', label: `Insights (${insights.length})` },
               { id: 'testimonials', label: `Testimonials (${testimonials.length})` },
@@ -429,6 +431,14 @@ export function AdminPage() {
             </button>
           ))}
         </div>
+
+        {/* Google Forms Management Tab */}
+        {activeTab === 'forms' && (
+          <AdminFormsPanel
+            initialAccessToken={sheetsAccessToken}
+            onTokenUpdated={setSheetsAccessToken}
+          />
+        )}
 
         {/* Tab 1: Enquiries (Backend Spreadsheet View + Google Sheets Sync) */}
         {activeTab === 'enquiries' && (
